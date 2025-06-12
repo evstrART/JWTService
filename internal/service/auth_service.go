@@ -3,8 +3,9 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 
 	"JWTService/internal/models"
 	"JWTService/internal/repository"
@@ -81,7 +82,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*Token
 }
 
 func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*TokenPair, error) {
-	claims, err := s.validateToken(refreshToken)
+	claims, err := s.ValidateToken(refreshToken)
 	if err != nil {
 		return nil, errors.New("invalid refresh token")
 	}
@@ -91,13 +92,12 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*T
 		return nil, errors.New("invalid token id")
 	}
 
-	userIDFloat, ok := claims["user_id"].(float64) //!
+	userIDFloat, ok := claims["user_id"].(float64)
 	if !ok {
 		return nil, errors.New("invalid user id")
 	}
 	userID := int64(userIDFloat)
 
-	// Проверка токена в БД
 	storedToken, err := s.tokenRepo.GetRefreshToken(ctx, tokenID)
 	if err != nil {
 		return nil, err
@@ -106,17 +106,15 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*T
 		return nil, errors.New("refresh token expired or revoked")
 	}
 
-	// Отзываем старый токен
 	if err := s.tokenRepo.RevokeRefreshToken(ctx, tokenID); err != nil {
 		return nil, err
 	}
 
-	// Генерация новой пары токенов
 	return s.generateTokenPair(ctx, userID)
 }
 
 func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
-	claims, err := s.validateToken(refreshToken)
+	claims, err := s.ValidateToken(refreshToken)
 	if err != nil {
 		return err
 	}
@@ -131,8 +129,9 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 
 func (s *AuthService) generateTokenPair(ctx context.Context, userID int64) (*TokenPair, error) {
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userID,
-		"exp":     time.Now().Add(accessExp).Unix(), //!
+		"user_id":    userID,
+		"exp":        time.Now().Add(accessExp).Unix(),
+		"token_type": "access",
 	})
 
 	accessTokenString, err := accessToken.SignedString([]byte(jwtSecret))
@@ -140,14 +139,14 @@ func (s *AuthService) generateTokenPair(ctx context.Context, userID int64) (*Tok
 		return nil, err
 	}
 
-	// refresh token with jti
 	tokenID := uuid.New().String()
 	expiresAt := time.Now().Add(refreshExp)
 
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userID,
-		"jti":     tokenID,
-		"exp":     expiresAt.Unix(), //!
+		"user_id":    userID,
+		"jti":        tokenID,
+		"exp":        expiresAt.Unix(),
+		"token_type": "refresh",
 	})
 
 	refreshTokenString, err := refreshToken.SignedString([]byte(jwtSecret))
@@ -155,7 +154,6 @@ func (s *AuthService) generateTokenPair(ctx context.Context, userID int64) (*Tok
 		return nil, err
 	}
 
-	// save to db
 	if err := s.tokenRepo.SaveRefreshToken(ctx, userID, tokenID, expiresAt); err != nil {
 		return nil, err
 	}
@@ -166,7 +164,7 @@ func (s *AuthService) generateTokenPair(ctx context.Context, userID int64) (*Tok
 	}, nil
 }
 
-func (s *AuthService) validateToken(tokenString string) (jwt.MapClaims, error) {
+func (s *AuthService) ValidateToken(tokenString string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return []byte(jwtSecret), nil
 	})
@@ -180,7 +178,7 @@ func (s *AuthService) validateToken(tokenString string) (jwt.MapClaims, error) {
 }
 
 func (s *AuthService) LogoutAll(ctx context.Context, refreshToken string) error {
-	claims, err := s.validateToken(refreshToken)
+	claims, err := s.ValidateToken(refreshToken)
 	if err != nil {
 		return errors.New("invalid token")
 	}

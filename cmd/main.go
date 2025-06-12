@@ -1,16 +1,17 @@
 package main
 
 import (
+	"JWTService/internal/handler"
+	"JWTService/internal/middleware"
+	"JWTService/internal/repository"
+	"JWTService/internal/service"
 	"JWTService/pkg/postgres"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	_ "github.com/lib/pq"
 	"log"
 	"os"
 
-	"JWTService/internal/handler"
-	"JWTService/internal/repository"
-	"JWTService/internal/service"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -44,8 +45,10 @@ func main() {
 	auth.Post("/login", authHandler.Login)
 	auth.Post("/reg", authHandler.Register)
 	auth.Post("/refresh", authHandler.Refresh)
-	auth.Post("/logout", authHandler.Logout)
-	auth.Post("/logout_all", authHandler.LogoutAll)
+
+	protected := auth.Group("/", middleware.AuthMiddleware(authService))
+	protected.Post("/logout", authHandler.Logout)
+	protected.Post("/logout_all", authHandler.LogoutAll)
 
 	port := os.Getenv("PORT")
 	if port == "" {
