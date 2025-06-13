@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 	"JWTService/internal/repository"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -21,8 +23,9 @@ const (
 )
 
 type AuthService struct {
-	userRepo  *repository.UserRepository
-	tokenRepo *repository.TokenRepository
+	userRepo    *repository.UserRepository
+	tokenRepo   *repository.TokenRepository
+	RedisClient *redis.Client
 }
 
 type TokenPair struct {
@@ -30,10 +33,11 @@ type TokenPair struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-func NewAuthService(userRepo *repository.UserRepository, tokenRepo *repository.TokenRepository) *AuthService {
+func NewAuthService(userRepo *repository.UserRepository, tokenRepo *repository.TokenRepository, redisClient *redis.Client) *AuthService {
 	return &AuthService{
-		userRepo:  userRepo,
-		tokenRepo: tokenRepo,
+		userRepo:    userRepo,
+		tokenRepo:   tokenRepo,
+		RedisClient: redisClient,
 	}
 }
 
@@ -124,28 +128,63 @@ func (s *AuthService) Logout(ctx context.Context, refreshToken string) error {
 		return errors.New("invalid token id")
 	}
 
+	accessToken := ctx.Value("access_token").(string)
+	if accessToken != "" {
+		accessClaims, err := s.ValidateToken(accessToken)
+		if err == nil {
+			if jti, ok := accessClaims["jti"].(string); ok {
+				exp := time.Until(time.Unix(int64(accessClaims["exp"].(float64)), 0))
+				err = s.RedisClient.HSet(ctx, "revoked:"+jti, "revoked", "1").Err()
+				if err != nil {
+					return err
+				}
+				err = s.RedisClient.Expire(ctx, "revoked:"+jti, exp).Err()
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	return s.tokenRepo.RevokeRefreshToken(ctx, tokenID)
 }
 
 func (s *AuthService) generateTokenPair(ctx context.Context, userID int64) (*TokenPair, error) {
+	accessJTI := uuid.New().String()
+	accessExpiresAt := time.Now().Add(accessExp)
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id":    userID,
-		"exp":        time.Now().Add(accessExp).Unix(),
+		"exp":        accessExpiresAt.Unix(),
 		"token_type": "access",
+		"jti":        accessJTI,
 	})
 
 	accessTokenString, err := accessToken.SignedString([]byte(jwtSecret))
 	if err != nil {
 		return nil, err
 	}
+	ttl := time.Until(accessExpiresAt)
 
-	tokenID := uuid.New().String()
-	expiresAt := time.Now().Add(refreshExp)
+	err = s.RedisClient.HSet(ctx, "revoked:"+accessJTI, map[string]interface{}{
+		"revoked": "0",
+		"user_id": userID,
+	}).Err()
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.RedisClient.Expire(ctx, "revoked:"+accessJTI, ttl).Err()
+	if err != nil {
+		return nil, err
+	}
+
+	refreshJTI := uuid.New().String()
+	refreshExpiresAt := time.Now().Add(refreshExp)
 
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id":    userID,
-		"jti":        tokenID,
-		"exp":        expiresAt.Unix(),
+		"jti":        refreshJTI,
+		"exp":        refreshExpiresAt.Unix(),
 		"token_type": "refresh",
 	})
 
@@ -154,7 +193,7 @@ func (s *AuthService) generateTokenPair(ctx context.Context, userID int64) (*Tok
 		return nil, err
 	}
 
-	if err := s.tokenRepo.SaveRefreshToken(ctx, userID, tokenID, expiresAt); err != nil {
+	if err := s.tokenRepo.SaveRefreshToken(ctx, userID, refreshJTI, refreshExpiresAt); err != nil {
 		return nil, err
 	}
 
@@ -188,6 +227,25 @@ func (s *AuthService) LogoutAll(ctx context.Context, refreshToken string) error 
 		return errors.New("invalid token payload")
 	}
 	userID := int64(userIDFloat)
+
+	keys, err := s.RedisClient.Keys(ctx, "revoked:*").Result()
+	if err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		userIDStr, err := s.RedisClient.HGet(ctx, key, "user_id").Result()
+		if err != nil {
+			continue
+		}
+
+		if userIDStr == fmt.Sprintf("%d", userID) {
+			err = s.RedisClient.Del(ctx, key).Err()
+			if err != nil {
+				return err
+			}
+		}
+	}
 
 	return s.tokenRepo.DeleteAllByUserID(ctx, userID)
 }

@@ -6,6 +6,7 @@ import (
 	"JWTService/internal/repository"
 	"JWTService/internal/service"
 	"JWTService/pkg/postgres"
+	"github.com/redis/go-redis/v9"
 	"log"
 	"os"
 
@@ -23,10 +24,15 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	tokenRepo := repository.NewTokenRepository(db)
-
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
 	authService := service.NewAuthService(
 		userRepo,
 		tokenRepo,
+		rdb,
 	)
 
 	authHandler := handler.NewAuthHandler(authService)
@@ -34,7 +40,7 @@ func main() {
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "внутренняя ошибка сервера",
+				"error": "internal server error",
 			})
 		},
 	})
@@ -49,6 +55,7 @@ func main() {
 	protected := auth.Group("/", middleware.AuthMiddleware(authService))
 	protected.Post("/logout", authHandler.Logout)
 	protected.Post("/logout_all", authHandler.LogoutAll)
+	protected.Get("/test", authHandler.TestPrint)
 
 	port := os.Getenv("PORT")
 	if port == "" {

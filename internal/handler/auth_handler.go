@@ -113,3 +113,8 @@ func (h *AuthHandler) LogoutAll(c *fiber.Ctx) error {
 
 	return c.SendStatus(fiber.StatusOK)
 }
+func (h *AuthHandler) TestPrint(c *fiber.Ctx) error {
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"msg": "done",
+	})
+}

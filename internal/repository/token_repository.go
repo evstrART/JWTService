@@ -4,8 +4,9 @@ import (
 	"JWTService/internal/models"
 	"context"
 	"database/sql"
-	"github.com/jmoiron/sqlx"
 	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
 type TokenRepository struct {

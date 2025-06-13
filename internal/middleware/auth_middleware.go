@@ -37,6 +37,24 @@ func AuthMiddleware(authService *service.AuthService) fiber.Handler {
 			})
 		}
 
+		jti, ok := claims["jti"].(string)
+		if !ok {
+			return c.Status(401).JSON(fiber.Map{"error": "invalid token format"})
+		}
+
+		redisKey := "revoked:" + jti
+		vals, err := authService.RedisClient.HGetAll(c.Context(), redisKey).Result()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "internal server error"})
+		}
+		if len(vals) == 0 {
+			return c.Status(401).JSON(fiber.Map{"error": "token revoked or not found"})
+		}
+		if vals["revoked"] == "1" {
+			return c.Status(401).JSON(fiber.Map{"error": "token revoked"})
+		}
+
+		c.Context().SetUserValue("access_token", parts[1])
 		c.Locals("user_id", claims["user_id"])
 		return c.Next()
 	}
