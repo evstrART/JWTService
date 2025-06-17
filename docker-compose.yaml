@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: auth_app
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    networks:
+      - backend
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres_auth_service
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: 1111
+      POSTGRES_DB: authservice
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - backend
+
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:

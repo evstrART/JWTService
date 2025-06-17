@@ -25,7 +25,7 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	tokenRepo := repository.NewTokenRepository(db)
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
+		Addr:     getEnvOrDefault("REDIS_ADDR", "localhost:6379"),
 		Password: "",
 		DB:       0,
 	})
@@ -63,4 +63,10 @@ func main() {
 	}
 
 	log.Fatal(app.Listen(":" + port))
+}
+func getEnvOrDefault(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
 }

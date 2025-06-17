@@ -38,11 +38,11 @@ func loadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		DBHost:     getEnvOrDefault("POSTGRES_HOST", "localhost"),
+		DBHost:     getEnvOrDefault("POSTGRES_HOST", "postgres"),
 		DBPort:     getEnvOrDefault("POSTGRES_PORT", "5432"),
-		DBUser:     getEnvOrDefault("POSTGRES_USER", "postgres"),
-		DBPassword: getEnvOrDefault("POSTGRES_PASSWORD", "postgres"),
-		DBName:     getEnvOrDefault("POSTGRES_DB", "telegramshop"),
+		DBUser:     getEnvOrDefault("POSTGRES_USER", "root"),
+		DBPassword: getEnvOrDefault("POSTGRES_PASSWORD", "1111"),
+		DBName:     getEnvOrDefault("POSTGRES_DB", "authservice"),
 		DBSSLMode:  getEnvOrDefault("POSTGRES_SSLMODE", "disable"),
 	}, nil
 }
