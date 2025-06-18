@@ -1,33 +1,23 @@
-version: '3.8'
+version: '3.9'
 
 services:
-  app:
-    build: .
-    container_name: auth_app
-    ports:
-      - "8081:8081"
-    depends_on:
-      - postgres
-      - redis
-    env_file:
-      - .env
-    networks:
-      - backend
-
   postgres:
     image: postgres:17-alpine
-    container_name: postgres_auth_service
+    container_name: postgres_db
     restart: always
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: 1111
-      POSTGRES_DB: authservice
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
-    networks:
-      - backend
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7
@@ -35,11 +25,35 @@ services:
     restart: always
     ports:
       - "6379:6379"
-    networks:
-      - backend
+
+  migrations:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: db_migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["./migrate", "-up"]
+    env_file:
+      - .env
+    restart: on-failure
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: go_app
+    restart: on-failure
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    ports:
+      - "8081:8081"
 
 volumes:
   postgres_data:
-
-networks:
-  backend:
