@@ -1,0 +1,16 @@
+CREATE TABLE IF NOT EXISTS users_migrate (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL
+    );
+
+
+CREATE TABLE IF NOT EXISTS organization_users (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE,
+    organization_id INTEGER NOT NULL,
+    type VARCHAR(50) NOT NULL DEFAULT 'user',
+    date_created TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users_migrate (id) ON DELETE CASCADE
+);
