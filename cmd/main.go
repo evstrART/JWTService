@@ -1,11 +1,13 @@
 package main
 
 import (
+	"JWTService/internal/email"
 	"JWTService/internal/handler"
 	"JWTService/internal/middleware"
 	"JWTService/internal/repository"
 	"JWTService/internal/service"
 	"JWTService/pkg/postgres"
+	"JWTService/pkg/rabbitmq"
 	"github.com/redis/go-redis/v9"
 	"log"
 	"os"
@@ -29,13 +31,23 @@ func main() {
 		Password: "",
 		DB:       0,
 	})
+
+	queueName := "email_queue"
+	rabbitConn, rabbitCh, rabbitQueue, err := rabbitmq.NewRabbitMQClient(queueName)
+	if err != nil {
+		log.Fatalf("Fail connection to RabbitMQ: %v", err)
+	}
+	defer rabbitmq.CloseRabbitMQConnections(rabbitConn, rabbitCh)
+
+	email.StartEmailScheduler(rabbitCh, rabbitQueue.Name)
+
 	authService := service.NewAuthService(
 		userRepo,
 		tokenRepo,
 		rdb,
 	)
 
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, rabbitCh, rabbitQueue.Name)
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {

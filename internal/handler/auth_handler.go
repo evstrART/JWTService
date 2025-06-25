@@ -1,19 +1,26 @@
 package handler
 
 import (
+	"JWTService/internal/email"
 	"JWTService/internal/models"
 	"JWTService/internal/service"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/rabbitmq/amqp091-go"
 )
 
 type AuthHandler struct {
-	authService *service.AuthService
+	authService     *service.AuthService
+	rabbitCh        *amqp091.Channel
+	rabbitQueueName string
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
+func NewAuthHandler(authService *service.AuthService, rabbitCh *amqp091.Channel, rabbitQueueName string) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
+		authService:     authService,
+		rabbitCh:        rabbitCh,
+		rabbitQueueName: rabbitQueueName,
 	}
 }
 
@@ -41,6 +48,16 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		})
 	}
 
+	emailMsg := models.EmailMessage{
+		RecipientEmail: input.Email,
+		Subject:        "Добро пожаловать!",
+		Body:           "Спасибо за регистрацию!",
+	}
+	err = email.PublishEmailMessage(h.rabbitCh, h.rabbitQueueName, emailMsg)
+	if err != nil {
+		log.Printf("Ошибка публикации email: %v", err)
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(tokens)
 }
 
@@ -59,6 +76,15 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		})
 	}
 
+	emailMsg := models.EmailMessage{
+		RecipientEmail: req.Email,
+		Subject:        "Добро пожаловать!",
+		Body:           "Спасибо за то, что пользуетесь нашим сервисом!",
+	}
+	err = email.PublishEmailMessage(h.rabbitCh, h.rabbitQueueName, emailMsg)
+	if err != nil {
+		log.Printf("Ошибка публикации email: %v", err)
+	}
 	return c.JSON(tokens)
 }
 
